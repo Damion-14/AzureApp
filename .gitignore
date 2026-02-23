@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.pfx
+local.settings.json
+appsettings.Development.json

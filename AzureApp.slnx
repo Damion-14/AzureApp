@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Quad.Poc.Functions/Quad.Poc.Functions.csproj" />
+    <Project Path="src/Quad.Poc.Worker/Quad.Poc.Worker.csproj" />
+  </Folder>
+</Solution>

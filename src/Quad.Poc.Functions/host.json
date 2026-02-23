@@ -1,0 +1,22 @@
+{
+  "version": "2.0",
+  "extensions": {
+    "http": {
+      "routePrefix": ""
+    },
+    "serviceBus": {
+      "prefetchCount": 0,
+      "messageHandlerOptions": {
+        "maxConcurrentCalls": 1,
+        "autoCompleteMessages": false
+      }
+    }
+  },
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true
+      }
+    }
+  }
+}
