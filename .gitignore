@@ -7,3 +7,4 @@ obj/
 *.pfx
 local.settings.json
 appsettings.Development.json
+.env

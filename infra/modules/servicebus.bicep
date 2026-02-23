@@ -30,24 +30,22 @@ resource resultsSubscription 'Microsoft.ServiceBus/namespaces/topics/subscriptio
 
 resource commandsRuleDefault 'Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2022-10-01-preview' = {
   parent: commandsSubscription
-  name: '$Default'
+  name: 'CommandFilter'
   properties: {
     filterType: 'SqlFilter'
     sqlFilter: {
-      sqlExpression: 'messageType = ''command'''
-      requiresPreprocessing: true
+      sqlExpression: 'messageType = \'command\''
     }
   }
 }
 
 resource resultsRuleDefault 'Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2022-10-01-preview' = {
   parent: resultsSubscription
-  name: '$Default'
+  name: 'ResultFilter'
   properties: {
     filterType: 'SqlFilter'
     sqlFilter: {
-      sqlExpression: 'messageType = ''result'''
-      requiresPreprocessing: true
+      sqlExpression: 'messageType = \'result\''
     }
   }
 }

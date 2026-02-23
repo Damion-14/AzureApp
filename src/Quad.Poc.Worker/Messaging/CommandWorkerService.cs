@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -74,7 +75,8 @@ public sealed class CommandWorkerService : BackgroundService, IAsyncDisposable
         CommandEnvelope? command = null;
         try
         {
-            command = args.Message.Body.ToObjectFromJson<CommandEnvelope>();
+            JsonSerializerOptions jsonOptions = new(JsonSerializerDefaults.Web);
+            command = args.Message.Body.ToObjectFromJson<CommandEnvelope>(jsonOptions);
             if (command is null)
             {
                 throw new InvalidOperationException("Command message body is empty.");
@@ -99,7 +101,7 @@ public sealed class CommandWorkerService : BackgroundService, IAsyncDisposable
                 Status = "succeeded"
             };
 
-            ServiceBusMessage resultMessage = new(BinaryData.FromObjectAsJson(result))
+            ServiceBusMessage resultMessage = new(BinaryData.FromObjectAsJson(result, new JsonSerializerOptions(JsonSerializerDefaults.Web)))
             {
                 ContentType = "application/json",
                 MessageId = Guid.NewGuid().ToString(),
