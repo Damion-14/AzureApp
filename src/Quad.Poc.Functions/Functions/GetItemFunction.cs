@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Quad.Poc.Functions.Auth;
 using Quad.Poc.Functions.Contracts;
 using Quad.Poc.Functions.Data;
 
@@ -8,10 +9,12 @@ namespace Quad.Poc.Functions.Functions;
 
 public sealed class GetItemFunction
 {
+    private readonly RequestAuthorizer _authorizer;
     private readonly SqlRepository _repository;
 
-    public GetItemFunction(SqlRepository repository)
+    public GetItemFunction(RequestAuthorizer authorizer, SqlRepository repository)
     {
+        _authorizer = authorizer;
         _repository = repository;
     }
 
@@ -21,7 +24,15 @@ public sealed class GetItemFunction
         string itemId,
         FunctionContext context)
     {
-        string tenantId = ReadSingleHeader(request, "X-Tenant-Id") ?? "poc";
+        AuthorizationResult authorization = _authorizer.Authorize(request, ApiPermission.Read);
+        if (!authorization.Succeeded)
+        {
+            HttpResponseData deniedResponse = request.CreateResponse(authorization.FailureStatusCode ?? HttpStatusCode.Forbidden);
+            await deniedResponse.WriteAsJsonAsync(authorization.Error);
+            return deniedResponse;
+        }
+
+        string tenantId = authorization.Context!.TenantId;
         SnapshotRecord? snapshot = await _repository.GetSnapshotAsync(
             tenantId,
             "Item",
@@ -40,15 +51,5 @@ public sealed class GetItemFunction
         response.Headers.Add("ETag", Convert.ToBase64String(snapshot.Etag));
         await response.WriteStringAsync(snapshot.SnapshotJson, context.CancellationToken);
         return response;
-    }
-
-    private static string? ReadSingleHeader(HttpRequestData request, string headerName)
-    {
-        if (!request.Headers.TryGetValues(headerName, out IEnumerable<string>? values))
-        {
-            return null;
-        }
-
-        return values.FirstOrDefault();
     }
 }

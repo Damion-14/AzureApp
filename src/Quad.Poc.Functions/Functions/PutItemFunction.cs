@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Quad.Poc.Functions.Auth;
 using Quad.Poc.Functions.Contracts;
 using Quad.Poc.Functions.Data;
 using Quad.Poc.Functions.Messaging;
@@ -12,11 +13,13 @@ namespace Quad.Poc.Functions.Functions;
 
 public sealed class PutItemFunction
 {
+    private readonly RequestAuthorizer _authorizer;
     private readonly SqlRepository _repository;
     private readonly TopicPublisher _publisher;
 
-    public PutItemFunction(SqlRepository repository, TopicPublisher publisher)
+    public PutItemFunction(RequestAuthorizer authorizer, SqlRepository repository, TopicPublisher publisher)
     {
+        _authorizer = authorizer;
         _repository = repository;
         _publisher = publisher;
     }
@@ -28,6 +31,15 @@ public sealed class PutItemFunction
         FunctionContext context)
     {
         CancellationToken cancellationToken = context.CancellationToken;
+        AuthorizationResult authorization = _authorizer.Authorize(request, ApiPermission.Write);
+        if (!authorization.Succeeded)
+        {
+            return await CreateErrorResponseAsync(
+                request,
+                authorization.FailureStatusCode ?? HttpStatusCode.Forbidden,
+                authorization.Error!.Code,
+                authorization.Error.Message);
+        }
 
         if (string.IsNullOrWhiteSpace(itemId))
         {
@@ -40,7 +52,7 @@ public sealed class PutItemFunction
             return await CreateErrorResponseAsync(request, HttpStatusCode.BadRequest, "missing_idempotency_key", "Header Idempotency-Key is required.");
         }
 
-        string tenantId = ReadSingleHeader(request, "X-Tenant-Id") ?? "poc";
+        string tenantId = authorization.Context!.TenantId;
         string requestBody;
         using (StreamReader reader = new(request.Body, Encoding.UTF8))
         {

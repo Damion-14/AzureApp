@@ -6,6 +6,11 @@
     "ServiceBusConnectionString": "Endpoint=sb://<namespace>.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=<key>",
     "SqlConnectionString": "Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Persist Security Info=False;User ID=<user>;Password=<password>;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;",
     "TopicName": "quad-poc-bus",
-    "ResultsSubscription": "results"
+    "ResultsSubscription": "results",
+    "Auth__Enabled": "false",
+    "Auth__AuthorizedClientsJson": "[{\"clientId\":\"<client-app-id>\",\"tenantId\":\"poc\",\"name\":\"Sample client\"}]",
+    "Auth__ReadRole": "items.read",
+    "Auth__WriteRole": "items.write",
+    "Auth__DefaultTenantId": "poc"
   }
 }

@@ -46,6 +46,8 @@ Use Azure Data Studio, SSMS, or `sqlcmd` to execute:
 2. Fill in:
 - `ServiceBusConnectionString`
 - `SqlConnectionString`
+- `Auth__Enabled` (`false` for local header-based testing, `true` to test App Service auth headers locally)
+- `Auth__AuthorizedClientsJson` (maps approved Entra client app IDs to application tenant IDs)
 
 3. Run:
 
@@ -77,3 +79,14 @@ This performs:
 2. Replay same PUT with same `Idempotency-Key` -> expects same `operationId`
 3. Poll `GET /v1/operations/{operationId}` until `succeeded`
 4. `GET /v1/items/{itemId}` -> expects full snapshot JSON
+
+## API authentication and authorization
+
+The Function App can now be protected with Microsoft Entra ID through App Service Authentication.
+
+- Azure-side gate: `infra/modules/functionapp.bicep` configures `authsettingsV2` when `authEnabled=true`.
+- Client allow-list: set `authAllowedClientApplications` to the Entra app IDs that may call the API.
+- In-app tenant mapping: set `authAuthorizedClientsJson` to a JSON array like `[{"clientId":"<app-id>","tenantId":"tenant-a","name":"Client A"}]`.
+- Role checks: callers must have the Entra app role claims configured by `authReadRole` and `authWriteRole`.
+
+When auth is enabled, the Functions app no longer trusts caller-supplied `X-Tenant-Id` for authorization. Tenant context comes from the authenticated client app mapping instead.

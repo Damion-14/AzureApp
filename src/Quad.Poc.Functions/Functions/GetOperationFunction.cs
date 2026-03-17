@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Quad.Poc.Functions.Auth;
 using Quad.Poc.Functions.Contracts;
 using Quad.Poc.Functions.Data;
 
@@ -8,10 +9,12 @@ namespace Quad.Poc.Functions.Functions;
 
 public sealed class GetOperationFunction
 {
+    private readonly RequestAuthorizer _authorizer;
     private readonly SqlRepository _repository;
 
-    public GetOperationFunction(SqlRepository repository)
+    public GetOperationFunction(RequestAuthorizer authorizer, SqlRepository repository)
     {
+        _authorizer = authorizer;
         _repository = repository;
     }
 
@@ -21,6 +24,14 @@ public sealed class GetOperationFunction
         string operationId,
         FunctionContext context)
     {
+        AuthorizationResult authorization = _authorizer.Authorize(request, ApiPermission.Read);
+        if (!authorization.Succeeded)
+        {
+            HttpResponseData deniedResponse = request.CreateResponse(authorization.FailureStatusCode ?? HttpStatusCode.Forbidden);
+            await deniedResponse.WriteAsJsonAsync(authorization.Error);
+            return deniedResponse;
+        }
+
         if (!Guid.TryParse(operationId, out Guid parsedOperationId))
         {
             HttpResponseData invalidResponse = request.CreateResponse(HttpStatusCode.BadRequest);
@@ -30,6 +41,13 @@ public sealed class GetOperationFunction
 
         OperationRecord? operation = await _repository.GetOperationAsync(parsedOperationId, context.CancellationToken);
         if (operation is null)
+        {
+            HttpResponseData notFound = request.CreateResponse(HttpStatusCode.NotFound);
+            await notFound.WriteAsJsonAsync(new ApiErrorResponse("not_found", "Operation was not found."));
+            return notFound;
+        }
+
+        if (!string.Equals(operation.TenantId, authorization.Context!.TenantId, StringComparison.Ordinal))
         {
             HttpResponseData notFound = request.CreateResponse(HttpStatusCode.NotFound);
             await notFound.WriteAsJsonAsync(new ApiErrorResponse("not_found", "Operation was not found."));

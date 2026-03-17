@@ -1,0 +1,788 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.40.2.10011",
+      "templateHash": "15688115760102289741"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "eastus",
+      "metadata": {
+        "description": "Deployment location for all resources."
+      }
+    },
+    "resourceGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource group name for the PoC resources."
+      }
+    },
+    "createResourceGroup": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "If true, create the resource group in this deployment."
+      }
+    },
+    "namePrefix": {
+      "type": "string",
+      "defaultValue": "quadpoc",
+      "metadata": {
+        "description": "Prefix used for generated resource names."
+      }
+    },
+    "topicName": {
+      "type": "string",
+      "defaultValue": "quad-poc-bus",
+      "metadata": {
+        "description": "Service Bus topic name."
+      }
+    },
+    "sqlAdminLogin": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure SQL admin login."
+      }
+    },
+    "sqlAdminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Azure SQL admin password."
+      }
+    },
+    "clientIpAddress": {
+      "type": "string",
+      "metadata": {
+        "description": "Public client IP allowed for SQL access."
+      }
+    },
+    "authEnabled": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable Microsoft Entra authentication in front of the Function App."
+      }
+    },
+    "authTenantId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Microsoft Entra tenant ID used by the Function App authentication provider."
+      }
+    },
+    "authApiClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Application client ID of the Microsoft Entra app registration that represents the Function API."
+      }
+    },
+    "authApiClientSecret": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Client secret for the Microsoft Entra app registration used by App Service authentication."
+      }
+    },
+    "authAllowedClientApplications": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Client application IDs that are allowed to call the Function API."
+      }
+    },
+    "authAllowedAudiences": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Audiences allowed for bearer tokens. If empty and auth is enabled, api://<authApiClientId> is used."
+      }
+    },
+    "authAuthorizedClientsJson": {
+      "type": "string",
+      "defaultValue": "[[]",
+      "metadata": {
+        "description": "JSON array mapping approved client application IDs to application tenant IDs."
+      }
+    },
+    "authReadRole": {
+      "type": "string",
+      "defaultValue": "items.read",
+      "metadata": {
+        "description": "Role claim required to read items and operations."
+      }
+    },
+    "authWriteRole": {
+      "type": "string",
+      "defaultValue": "items.write",
+      "metadata": {
+        "description": "Role claim required to write items."
+      }
+    }
+  },
+  "variables": {
+    "suffix": "[toLower(uniqueString(subscription().subscriptionId, parameters('resourceGroupName'), parameters('namePrefix')))]",
+    "storageAccountName": "[take(toLower(replace(format('{0}{1}sa', parameters('namePrefix'), variables('suffix')), '-', '')), 24)]",
+    "functionAppName": "[format('{0}-func-{1}', parameters('namePrefix'), variables('suffix'))]",
+    "appServicePlanName": "[format('{0}-plan-{1}', parameters('namePrefix'), variables('suffix'))]",
+    "logAnalyticsWorkspaceName": "[format('{0}-log-{1}', parameters('namePrefix'), variables('suffix'))]",
+    "appInsightsName": "[format('{0}-appi-{1}', parameters('namePrefix'), variables('suffix'))]",
+    "serviceBusNamespaceName": "[format('{0}-sb-{1}', parameters('namePrefix'), variables('suffix'))]",
+    "sqlServerName": "[format('{0}-sql-{1}', parameters('namePrefix'), variables('suffix'))]",
+    "sqlDatabaseName": "[format('{0}-db', parameters('namePrefix'))]"
+  },
+  "resources": [
+    {
+      "condition": "[parameters('createResourceGroup')]",
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('resourceGroupName')]",
+      "location": "[parameters('location')]"
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "serviceBusStack",
+      "resourceGroup": "[parameters('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "namespaceName": {
+            "value": "[variables('serviceBusNamespaceName')]"
+          },
+          "topicName": {
+            "value": "[parameters('topicName')]"
+          },
+          "commandsSubscriptionName": {
+            "value": "commands"
+          },
+          "resultsSubscriptionName": {
+            "value": "results"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "11674879384340450529"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "namespaceName": {
+              "type": "string"
+            },
+            "topicName": {
+              "type": "string"
+            },
+            "commandsSubscriptionName": {
+              "type": "string",
+              "defaultValue": "commands"
+            },
+            "resultsSubscriptionName": {
+              "type": "string",
+              "defaultValue": "results"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ServiceBus/namespaces",
+              "apiVersion": "2022-10-01-preview",
+              "name": "[parameters('namespaceName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard",
+                "tier": "Standard"
+              }
+            },
+            {
+              "type": "Microsoft.ServiceBus/namespaces/topics",
+              "apiVersion": "2022-10-01-preview",
+              "name": "[format('{0}/{1}', parameters('namespaceName'), parameters('topicName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.ServiceBus/namespaces', parameters('namespaceName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.ServiceBus/namespaces/topics/subscriptions",
+              "apiVersion": "2022-10-01-preview",
+              "name": "[format('{0}/{1}/{2}', parameters('namespaceName'), parameters('topicName'), parameters('commandsSubscriptionName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.ServiceBus/namespaces/topics', parameters('namespaceName'), parameters('topicName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.ServiceBus/namespaces/topics/subscriptions",
+              "apiVersion": "2022-10-01-preview",
+              "name": "[format('{0}/{1}/{2}', parameters('namespaceName'), parameters('topicName'), parameters('resultsSubscriptionName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.ServiceBus/namespaces/topics', parameters('namespaceName'), parameters('topicName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules",
+              "apiVersion": "2022-10-01-preview",
+              "name": "[format('{0}/{1}/{2}/{3}', parameters('namespaceName'), parameters('topicName'), parameters('commandsSubscriptionName'), 'CommandFilter')]",
+              "properties": {
+                "filterType": "SqlFilter",
+                "sqlFilter": {
+                  "sqlExpression": "messageType = 'command'"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ServiceBus/namespaces/topics/subscriptions', parameters('namespaceName'), parameters('topicName'), parameters('commandsSubscriptionName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules",
+              "apiVersion": "2022-10-01-preview",
+              "name": "[format('{0}/{1}/{2}/{3}', parameters('namespaceName'), parameters('topicName'), parameters('resultsSubscriptionName'), 'ResultFilter')]",
+              "properties": {
+                "filterType": "SqlFilter",
+                "sqlFilter": {
+                  "sqlExpression": "messageType = 'result'"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ServiceBus/namespaces/topics/subscriptions', parameters('namespaceName'), parameters('topicName'), parameters('resultsSubscriptionName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "serviceBusConnectionString": {
+              "type": "string",
+              "value": "[format('Endpoint=sb://{0}.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey={1}', parameters('namespaceName'), listKeys(resourceId('Microsoft.ServiceBus/namespaces/AuthorizationRules', parameters('namespaceName'), 'RootManageSharedAccessKey'), '2022-10-01-preview').primaryKey)]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('resourceGroupName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "sqlStack",
+      "resourceGroup": "[parameters('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "serverName": {
+            "value": "[variables('sqlServerName')]"
+          },
+          "databaseName": {
+            "value": "[variables('sqlDatabaseName')]"
+          },
+          "sqlAdminLogin": {
+            "value": "[parameters('sqlAdminLogin')]"
+          },
+          "sqlAdminPassword": {
+            "value": "[parameters('sqlAdminPassword')]"
+          },
+          "clientIpAddress": {
+            "value": "[parameters('clientIpAddress')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "13846067904357460383"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "serverName": {
+              "type": "string"
+            },
+            "databaseName": {
+              "type": "string"
+            },
+            "sqlAdminLogin": {
+              "type": "string"
+            },
+            "sqlAdminPassword": {
+              "type": "securestring"
+            },
+            "clientIpAddress": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Sql/servers",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[parameters('serverName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "administratorLogin": "[parameters('sqlAdminLogin')]",
+                "administratorLoginPassword": "[parameters('sqlAdminPassword')]",
+                "minimalTlsVersion": "1.2",
+                "publicNetworkAccess": "Enabled"
+              }
+            },
+            {
+              "type": "Microsoft.Sql/servers/databases",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[format('{0}/{1}', parameters('serverName'), parameters('databaseName'))]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "S0",
+                "tier": "Standard"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', parameters('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Sql/servers/firewallRules",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[format('{0}/{1}', parameters('serverName'), 'AllowAzureServices')]",
+              "properties": {
+                "startIpAddress": "0.0.0.0",
+                "endIpAddress": "0.0.0.0"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', parameters('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Sql/servers/firewallRules",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[format('{0}/{1}', parameters('serverName'), 'AllowClientIp')]",
+              "properties": {
+                "startIpAddress": "[parameters('clientIpAddress')]",
+                "endIpAddress": "[parameters('clientIpAddress')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', parameters('serverName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "sqlServerName": {
+              "type": "string",
+              "value": "[parameters('serverName')]"
+            },
+            "sqlDatabaseName": {
+              "type": "string",
+              "value": "[parameters('databaseName')]"
+            },
+            "sqlConnectionString": {
+              "type": "string",
+              "value": "[format('Server=tcp:{0}.database.windows.net,1433;Initial Catalog={1};Persist Security Info=False;User ID={2};Password={3};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;', parameters('serverName'), parameters('databaseName'), parameters('sqlAdminLogin'), parameters('sqlAdminPassword'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('resourceGroupName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "functionAppStack",
+      "resourceGroup": "[parameters('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "storageAccountName": {
+            "value": "[variables('storageAccountName')]"
+          },
+          "functionAppName": {
+            "value": "[variables('functionAppName')]"
+          },
+          "appServicePlanName": {
+            "value": "[variables('appServicePlanName')]"
+          },
+          "logAnalyticsWorkspaceName": {
+            "value": "[variables('logAnalyticsWorkspaceName')]"
+          },
+          "appInsightsName": {
+            "value": "[variables('appInsightsName')]"
+          },
+          "serviceBusConnectionString": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'serviceBusStack'), '2025-04-01').outputs.serviceBusConnectionString.value]"
+          },
+          "sqlConnectionString": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'sqlStack'), '2025-04-01').outputs.sqlConnectionString.value]"
+          },
+          "topicName": {
+            "value": "[parameters('topicName')]"
+          },
+          "resultsSubscriptionName": {
+            "value": "results"
+          },
+          "authEnabled": {
+            "value": "[parameters('authEnabled')]"
+          },
+          "authTenantId": {
+            "value": "[parameters('authTenantId')]"
+          },
+          "authApiClientId": {
+            "value": "[parameters('authApiClientId')]"
+          },
+          "authApiClientSecret": {
+            "value": "[parameters('authApiClientSecret')]"
+          },
+          "authAllowedClientApplications": {
+            "value": "[parameters('authAllowedClientApplications')]"
+          },
+          "authAllowedAudiences": {
+            "value": "[parameters('authAllowedAudiences')]"
+          },
+          "authAuthorizedClientsJson": {
+            "value": "[parameters('authAuthorizedClientsJson')]"
+          },
+          "authReadRole": {
+            "value": "[parameters('authReadRole')]"
+          },
+          "authWriteRole": {
+            "value": "[parameters('authWriteRole')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "5874314537433926535"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "storageAccountName": {
+              "type": "string"
+            },
+            "functionAppName": {
+              "type": "string"
+            },
+            "appServicePlanName": {
+              "type": "string"
+            },
+            "logAnalyticsWorkspaceName": {
+              "type": "string"
+            },
+            "appInsightsName": {
+              "type": "string"
+            },
+            "serviceBusConnectionString": {
+              "type": "securestring"
+            },
+            "sqlConnectionString": {
+              "type": "securestring"
+            },
+            "topicName": {
+              "type": "string"
+            },
+            "resultsSubscriptionName": {
+              "type": "string"
+            },
+            "authEnabled": {
+              "type": "bool",
+              "defaultValue": false
+            },
+            "authTenantId": {
+              "type": "string",
+              "defaultValue": ""
+            },
+            "authApiClientId": {
+              "type": "string",
+              "defaultValue": ""
+            },
+            "authApiClientSecret": {
+              "type": "securestring",
+              "defaultValue": ""
+            },
+            "authAllowedClientApplications": {
+              "type": "array",
+              "defaultValue": []
+            },
+            "authAllowedAudiences": {
+              "type": "array",
+              "defaultValue": []
+            },
+            "authAuthorizedClientsJson": {
+              "type": "string",
+              "defaultValue": "[[]"
+            },
+            "authReadRole": {
+              "type": "string",
+              "defaultValue": "items.read"
+            },
+            "authWriteRole": {
+              "type": "string",
+              "defaultValue": "items.write"
+            }
+          },
+          "variables": {
+            "effectiveAllowedAudiences": "[if(not(empty(parameters('authAllowedAudiences'))), parameters('authAllowedAudiences'), if(empty(parameters('authApiClientId')), createArray(), createArray(format('api://{0}', parameters('authApiClientId')))))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('storageAccountName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard_LRS"
+              },
+              "kind": "StorageV2",
+              "properties": {
+                "accessTier": "Hot",
+                "minimumTlsVersion": "TLS1_2",
+                "supportsHttpsTrafficOnly": true
+              }
+            },
+            {
+              "type": "Microsoft.Web/serverfarms",
+              "apiVersion": "2023-12-01",
+              "name": "[parameters('appServicePlanName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Y1",
+                "tier": "Dynamic"
+              },
+              "kind": "functionapp",
+              "properties": {
+                "reserved": true
+              }
+            },
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('logAnalyticsWorkspaceName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "PerGB2018"
+              },
+              "properties": {
+                "retentionInDays": 30
+              }
+            },
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('appInsightsName')]",
+              "location": "[parameters('location')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2023-12-01",
+              "name": "[parameters('functionAppName')]",
+              "location": "[parameters('location')]",
+              "kind": "functionapp,linux",
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+                "httpsOnly": true,
+                "siteConfig": {
+                  "linuxFxVersion": "DOTNET-ISOLATED|8.0",
+                  "ftpsState": "FtpsOnly",
+                  "appSettings": [
+                    {
+                      "name": "FUNCTIONS_EXTENSION_VERSION",
+                      "value": "~4"
+                    },
+                    {
+                      "name": "FUNCTIONS_WORKER_RUNTIME",
+                      "value": "dotnet-isolated"
+                    },
+                    {
+                      "name": "AzureWebJobsStorage",
+                      "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix={2}', parameters('storageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-05-01').keys[0].value, environment().suffixes.storage)]"
+                    },
+                    {
+                      "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                      "value": "[reference(resourceId('Microsoft.Insights/components', parameters('appInsightsName')), '2020-02-02').ConnectionString]"
+                    },
+                    {
+                      "name": "ServiceBusConnectionString",
+                      "value": "[parameters('serviceBusConnectionString')]"
+                    },
+                    {
+                      "name": "SqlConnectionString",
+                      "value": "[parameters('sqlConnectionString')]"
+                    },
+                    {
+                      "name": "TopicName",
+                      "value": "[parameters('topicName')]"
+                    },
+                    {
+                      "name": "ResultsSubscription",
+                      "value": "[parameters('resultsSubscriptionName')]"
+                    },
+                    {
+                      "name": "Auth__Enabled",
+                      "value": "[string(parameters('authEnabled'))]"
+                    },
+                    {
+                      "name": "Auth__AuthorizedClientsJson",
+                      "value": "[parameters('authAuthorizedClientsJson')]"
+                    },
+                    {
+                      "name": "Auth__ReadRole",
+                      "value": "[parameters('authReadRole')]"
+                    },
+                    {
+                      "name": "Auth__WriteRole",
+                      "value": "[parameters('authWriteRole')]"
+                    },
+                    {
+                      "name": "Auth__DefaultTenantId",
+                      "value": "poc"
+                    },
+                    {
+                      "name": "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET",
+                      "value": "[parameters('authApiClientSecret')]"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
+                "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('authEnabled')]",
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2022-09-01",
+              "name": "[format('{0}/{1}', parameters('functionAppName'), 'authsettingsV2')]",
+              "properties": {
+                "platform": {
+                  "enabled": true,
+                  "runtimeVersion": "~1"
+                },
+                "globalValidation": {
+                  "requireAuthentication": true,
+                  "unauthenticatedClientAction": "Return401",
+                  "redirectToProvider": "azureactivedirectory"
+                },
+                "identityProviders": {
+                  "azureActiveDirectory": {
+                    "enabled": true,
+                    "registration": {
+                      "clientId": "[parameters('authApiClientId')]",
+                      "clientSecretSettingName": "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET",
+                      "openIdIssuer": "[format('https://login.microsoftonline.com/{0}/v2.0', parameters('authTenantId'))]"
+                    },
+                    "validation": {
+                      "allowedAudiences": "[variables('effectiveAllowedAudiences')]",
+                      "defaultAuthorizationPolicy": {
+                        "allowedApplications": "[parameters('authAllowedClientApplications')]"
+                      },
+                      "jwtClaimChecks": {
+                        "allowedClientApplications": "[parameters('authAllowedClientApplications')]"
+                      }
+                    }
+                  }
+                },
+                "login": {
+                  "tokenStore": {
+                    "enabled": false
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', parameters('functionAppName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "functionAppName": {
+              "type": "string",
+              "value": "[parameters('functionAppName')]"
+            },
+            "storageAccountName": {
+              "type": "string",
+              "value": "[parameters('storageAccountName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('resourceGroupName'))]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'serviceBusStack')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'sqlStack')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "serviceBusConnectionString": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'serviceBusStack'), '2025-04-01').outputs.serviceBusConnectionString.value]"
+    },
+    "sqlConnectionString": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'sqlStack'), '2025-04-01').outputs.sqlConnectionString.value]"
+    },
+    "functionAppName": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'functionAppStack'), '2025-04-01').outputs.functionAppName.value]"
+    },
+    "topicName": {
+      "type": "string",
+      "value": "[parameters('topicName')]"
+    },
+    "serviceBusNamespaceName": {
+      "type": "string",
+      "value": "[variables('serviceBusNamespaceName')]"
+    },
+    "sqlServerName": {
+      "type": "string",
+      "value": "[variables('sqlServerName')]"
+    },
+    "sqlDatabaseName": {
+      "type": "string",
+      "value": "[variables('sqlDatabaseName')]"
+    }
+  }
+}
