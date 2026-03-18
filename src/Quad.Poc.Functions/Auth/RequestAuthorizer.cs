@@ -1,7 +1,9 @@
-using System.Net;
-using System.Text.Json;
 using Microsoft.Azure.Functions.Worker.Http;
 using Quad.Poc.Functions.Contracts;
+using Quad.Poc.Functions.Data;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Quad.Poc.Functions.Auth;
 
@@ -24,183 +26,68 @@ public sealed record AuthorizationResult(
 {
     public bool Succeeded => Context is not null;
 
-    public static AuthorizationResult Success(RequestAuthorizationContext context) => new(context, null, null);
+    public static AuthorizationResult Success(RequestAuthorizationContext context)
+    {
+        return new(context, null, null);
+    }
 
     public static AuthorizationResult Failure(HttpStatusCode statusCode, string code, string message)
-        => new(null, statusCode, new ApiErrorResponse(code, message));
+    {
+        return new(null, statusCode, new ApiErrorResponse(code, message));
+    }
 }
-
-internal sealed record ClientPrincipalClaim(string Type, string Value);
-
-internal sealed record ClientPrincipalPayload(string? AuthenticationType, string? RoleType, IReadOnlyList<ClientPrincipalClaim> Claims);
 
 public sealed class RequestAuthorizer
 {
-    private static readonly string[] ClientIdClaimTypes =
-    [
-        "appid",
-        "azp",
-        "client_id",
-        "http://schemas.microsoft.com/identity/claims/clientid"
-    ];
+    private const string ApiKeyHeader = "X-Api-Key";
+    private readonly SqlRepository _repository;
 
-    private static readonly string[] DisplayNameClaimTypes =
-    [
-        "name",
-        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"
-    ];
-
-    private static readonly string[] DefaultRoleClaimTypes =
-    [
-        "roles",
-        "role",
-        "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
-    ];
-
-    private readonly AuthOptions _options;
-
-    public RequestAuthorizer(AuthOptions options)
+    public RequestAuthorizer(SqlRepository repository)
     {
-        _options = options;
+        _repository = repository;
     }
 
-    public AuthorizationResult Authorize(HttpRequestData request, ApiPermission permission)
+    public async Task<AuthorizationResult> AuthorizeAsync(HttpRequestData request, ApiPermission permission, CancellationToken cancellationToken)
     {
-        if (!_options.Enabled)
-        {
-            string tenantId = ReadSingleHeader(request, "X-Tenant-Id") ?? _options.DefaultTenantId;
-            return AuthorizationResult.Success(new RequestAuthorizationContext(
-                "local-development",
-                tenantId,
-                "Local development",
-                Array.Empty<string>()));
-        }
-
-        string? encodedClientPrincipal = ReadSingleHeader(request, "X-MS-CLIENT-PRINCIPAL");
-        if (string.IsNullOrWhiteSpace(encodedClientPrincipal))
+        string? apiKey = ReadSingleHeader(request, ApiKeyHeader);
+        if (string.IsNullOrWhiteSpace(apiKey))
         {
             return AuthorizationResult.Failure(
                 HttpStatusCode.Unauthorized,
-                "authentication_required",
-                "Authentication is required.");
+                "api_key_required",
+                $"Header {ApiKeyHeader} is required.");
         }
 
-        ClientPrincipalPayload? principal;
-        try
+        byte[] apiKeyHash = SHA256.HashData(Encoding.UTF8.GetBytes(apiKey));
+        AuthorizedApiKeyRecord? client = await _repository.GetAuthorizedClientByApiKeyHashAsync(
+            apiKeyHash,
+            cancellationToken);
+
+        if (client is null)
         {
-            principal = DecodeClientPrincipal(encodedClientPrincipal);
-        }
-        catch (Exception)
-        {
-            return AuthorizationResult.Failure(
-                HttpStatusCode.Unauthorized,
-                "invalid_principal",
-                "Authenticated principal header is invalid.");
+            return AuthorizationResult.Failure(HttpStatusCode.Unauthorized, "invalid_api_key", "API key is invalid.");
         }
 
-        if (principal is null || string.IsNullOrWhiteSpace(principal.AuthenticationType))
+        if (!client.ClientIsActive)
         {
-            return AuthorizationResult.Failure(
-                HttpStatusCode.Unauthorized,
-                "invalid_principal",
-                "Authenticated principal is missing.");
+            return AuthorizationResult.Failure(HttpStatusCode.Forbidden, "client_disabled", "Caller is disabled.");
         }
 
-        string? clientId = GetFirstClaimValue(principal.Claims, ClientIdClaimTypes);
-        if (string.IsNullOrWhiteSpace(clientId))
+        if (!client.KeyIsActive || client.RevokedAt is not null)
         {
-            return AuthorizationResult.Failure(
-                HttpStatusCode.Forbidden,
-                "client_not_identified",
-                "Authenticated client application could not be identified.");
+            return AuthorizationResult.Failure(HttpStatusCode.Forbidden, "api_key_inactive", "API key is inactive.");
         }
 
-        if (!_options.AuthorizedClients.TryGetValue(clientId, out AuthorizedClient? authorizedClient))
+        if (client.ExpiresAt is not null && client.ExpiresAt <= DateTime.UtcNow)
         {
-            return AuthorizationResult.Failure(
-                HttpStatusCode.Forbidden,
-                "client_not_allowed",
-                "Authenticated client application is not allowed.");
-        }
-
-        HashSet<string> roles = GetRoles(principal);
-        string requiredRole = permission == ApiPermission.Write ? _options.WriteRole : _options.ReadRole;
-
-        if (!string.IsNullOrWhiteSpace(requiredRole) && !roles.Contains(requiredRole))
-        {
-            return AuthorizationResult.Failure(
-                HttpStatusCode.Forbidden,
-                "insufficient_role",
-                $"Authenticated client application is missing required role '{requiredRole}'.");
+            return AuthorizationResult.Failure(HttpStatusCode.Forbidden, "api_key_expired", "API key has expired.");
         }
 
         return AuthorizationResult.Success(new RequestAuthorizationContext(
-            clientId,
-            authorizedClient.TenantId,
-            GetFirstClaimValue(principal.Claims, DisplayNameClaimTypes) ?? authorizedClient.Name,
-            roles));
-    }
-
-    private static ClientPrincipalPayload DecodeClientPrincipal(string encodedClientPrincipal)
-    {
-        byte[] rawBytes = Convert.FromBase64String(encodedClientPrincipal);
-        using JsonDocument document = JsonDocument.Parse(rawBytes);
-        JsonElement root = document.RootElement;
-
-        List<ClientPrincipalClaim> claims = [];
-        if (root.TryGetProperty("claims", out JsonElement claimsElement) && claimsElement.ValueKind == JsonValueKind.Array)
-        {
-            foreach (JsonElement claim in claimsElement.EnumerateArray())
-            {
-                string? type = claim.TryGetProperty("typ", out JsonElement typeElement) ? typeElement.GetString() : null;
-                string? value = claim.TryGetProperty("val", out JsonElement valueElement) ? valueElement.GetString() : null;
-
-                if (!string.IsNullOrWhiteSpace(type) && value is not null)
-                {
-                    claims.Add(new ClientPrincipalClaim(type, value));
-                }
-            }
-        }
-
-        string? authenticationType = root.TryGetProperty("auth_typ", out JsonElement authTypeElement)
-            ? authTypeElement.GetString()
-            : null;
-        string? roleType = root.TryGetProperty("role_typ", out JsonElement roleTypeElement)
-            ? roleTypeElement.GetString()
-            : null;
-
-        return new ClientPrincipalPayload(authenticationType, roleType, claims);
-    }
-
-    private static HashSet<string> GetRoles(ClientPrincipalPayload principal)
-    {
-        HashSet<string> roleClaimTypes = new(StringComparer.OrdinalIgnoreCase);
-        foreach (string claimType in DefaultRoleClaimTypes)
-        {
-            roleClaimTypes.Add(claimType);
-        }
-
-        if (!string.IsNullOrWhiteSpace(principal.RoleType))
-        {
-            roleClaimTypes.Add(principal.RoleType);
-        }
-
-        HashSet<string> roles = new(StringComparer.OrdinalIgnoreCase);
-        foreach (ClientPrincipalClaim claim in principal.Claims)
-        {
-            if (roleClaimTypes.Contains(claim.Type) && !string.IsNullOrWhiteSpace(claim.Value))
-            {
-                roles.Add(claim.Value);
-            }
-        }
-
-        return roles;
-    }
-
-    private static string? GetFirstClaimValue(IEnumerable<ClientPrincipalClaim> claims, IEnumerable<string> claimTypes)
-    {
-        HashSet<string> normalizedClaimTypes = new(claimTypes, StringComparer.OrdinalIgnoreCase);
-        return claims.FirstOrDefault(claim => normalizedClaimTypes.Contains(claim.Type))?.Value;
+            client.ClientId.ToString(),
+            client.TenantId,
+            client.Name,
+            Array.Empty<string>()));
     }
 
     private static string? ReadSingleHeader(HttpRequestData request, string headerName)

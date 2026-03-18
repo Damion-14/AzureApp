@@ -1,6 +1,7 @@
 param(
     [string]$BaseUrl = "http://localhost:7071",
-    [string]$TenantId = "poc",
+    [Parameter(Mandatory = $true)]
+    [string]$ApiKey,
     [string]$ItemId = "item-1001",
     [string]$IdempotencyKey = "idem-1001"
 )
@@ -18,7 +19,7 @@ $payload = @{
 $putUrl = "$BaseUrl/v1/items/$ItemId"
 $putHeaders = @{
     "Content-Type" = "application/json"
-    "X-Tenant-Id" = $TenantId
+    "X-Api-Key" = $ApiKey
     "Idempotency-Key" = $IdempotencyKey
 }
 
@@ -37,7 +38,7 @@ Write-Host "Replay returned same operationId."
 $operationUrl = "$BaseUrl/v1/operations/$operationId"
 Write-Host "Polling operation status..."
 for ($i = 0; $i -lt 30; $i++) {
-    $op = Invoke-RestMethod -Method Get -Uri $operationUrl
+    $op = Invoke-RestMethod -Method Get -Uri $operationUrl -Headers @{ "X-Api-Key" = $ApiKey }
     Write-Host "Status: $($op.status)"
     if ($op.status -eq "succeeded") {
         break
@@ -50,5 +51,5 @@ for ($i = 0; $i -lt 30; $i++) {
 
 $itemUrl = "$BaseUrl/v1/items/$ItemId"
 Write-Host "GET item snapshot..."
-$item = Invoke-RestMethod -Method Get -Uri $itemUrl -Headers @{ "X-Tenant-Id" = $TenantId }
+$item = Invoke-RestMethod -Method Get -Uri $itemUrl -Headers @{ "X-Api-Key" = $ApiKey }
 $item | ConvertTo-Json -Depth 20

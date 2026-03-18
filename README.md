@@ -5,6 +5,7 @@ End-to-end PoC for idempotent item upsert using:
 - Azure Functions (.NET isolated)
 - Azure Service Bus Topic + Subscriptions
 - Azure SQL (operations + snapshot tables)
+- Custom API key authentication backed by Azure SQL
 - Local worker console app
 - Bicep for infrastructure
 
@@ -24,8 +25,9 @@ This is the shortest path to get the app running for manual testing:
 2. Deploy infrastructure with the PowerShell script.
 3. Publish the Azure Function App.
 4. Apply the SQL schema.
-5. Run the worker locally.
-6. Call the deployed Function App from Postman.
+5. Create at least one client and API key in SQL.
+6. Run the worker locally.
+7. Call the deployed Function App with `X-Api-Key`.
 
 ### 1. Azure login
 
@@ -72,9 +74,41 @@ sqlcmd -S "<sqlServerName>.database.windows.net" `
   -P "<strong-password>" `
   -C `
   -i ".\db\001_schema.sql"
+
+sqlcmd -S "<sqlServerName>.database.windows.net" `
+  -d "<sqlDatabaseName>" `
+  -U "quadpocadmin" `
+  -P "<strong-password>" `
+  -C `
+  -i ".\db\002_client_registry.sql"
+
+sqlcmd -S "<sqlServerName>.database.windows.net" `
+  -d "<sqlDatabaseName>" `
+  -U "quadpocadmin" `
+  -P "<strong-password>" `
+  -C `
+  -i ".\db\003_api_keys.sql"
 ```
 
-### 5. Run the worker locally
+### 5. Create a client and API key
+
+Use the helper script to generate a plaintext API key and matching SQL:
+
+```powershell
+.\scripts\new-client-api-key.ps1 `
+  -TenantId "tenant-a" `
+  -ClientName "Client A" `
+  -KeyName "default"
+```
+
+The script prints:
+
+- a plaintext API key to hand to the client
+- SQL to insert the client and hashed key into Azure SQL
+
+Run the SQL it prints against your database before testing the API.
+
+### 6. Run the worker locally
 
 The worker reads from the `commands` Service Bus subscription and writes results back to the topic.
 
@@ -84,7 +118,7 @@ The worker reads from the `commands` Service Bus subscription and writes results
 
 You can also run `Quad.Poc.Worker` from Visual Studio. The project includes a Development launch profile and reads `appsettings.Development.json`.
 
-### 6. Test from Postman
+### 7. Test from Postman
 
 Use this request:
 
@@ -92,8 +126,8 @@ Use this request:
 - URL: `https://<functionAppName>.azurewebsites.net/v1/items/item-1001`
 - Headers:
   - `Content-Type: application/json`
-  - `X-Tenant-Id: poc`
   - `Idempotency-Key: idem-1001`
+  - `X-Api-Key: <plaintext-api-key>`
 - Body:
 
 ```json
@@ -118,10 +152,10 @@ Expected response:
 
 Then:
 
-- `GET {{StatusUrl}}`
-- `GET {{ResourceUrl}}` with header `X-Tenant-Id: poc`
+- `GET https://<functionAppName>.azurewebsites.net/v1/operations/<guid>` with the same API key
+- `GET https://<functionAppName>.azurewebsites.net/v1/items/item-1001` with the same API key
 
-### 7. Clean up
+### 8. Clean up
 
 Delete the resource group when done:
 
@@ -135,8 +169,8 @@ az group delete --name "rg-azure-app-test" --yes
 2. Fill in:
 - `ServiceBusConnectionString`
 - `SqlConnectionString`
-- `Auth__Enabled` (`false` for local header-based testing, `true` to test App Service auth headers locally)
-- `Auth__AuthorizedClientsJson` (maps approved Entra client app IDs to application tenant IDs)
+
+Then create a local client and API key with `.\scripts\new-client-api-key.ps1` and insert the generated SQL into your local or Azure SQL database.
 
 3. Run:
 
@@ -153,12 +187,13 @@ dotnet run --project .\src\Quad.Poc.Functions\Quad.Poc.Functions.csproj
 ## Manual test
 
 ```powershell
-.\scripts\test-poc.ps1 -BaseUrl "http://localhost:7071"
+.\scripts\test-poc.ps1 -BaseUrl "http://localhost:7071" -ApiKey "<plaintext-api-key>"
 ```
 
 Or via curl/bash:
 
 ```bash
+export API_KEY="<plaintext-api-key>"
 ./scripts/test-poc.sh
 ```
 
@@ -171,11 +206,9 @@ This performs:
 
 ## API authentication and authorization
 
-The Function App can now be protected with Microsoft Entra ID through App Service Authentication.
+Each request must include `X-Api-Key`. The Function App hashes the presented key, looks it up in SQL, resolves the canonical client record, and derives the `tenantId` used for item and operation isolation.
 
-- Azure-side gate: `infra/modules/functionapp.bicep` configures `authsettingsV2` when `authEnabled=true`.
-- Client allow-list: set `authAllowedClientApplications` to the Entra app IDs that may call the API.
-- In-app tenant mapping: set `authAuthorizedClientsJson` to a JSON array like `[{"clientId":"<app-id>","tenantId":"tenant-a","name":"Client A"}]`.
-- Role checks: callers must have the Entra app role claims configured by `authReadRole` and `authWriteRole`.
-
-When auth is enabled, the Functions app no longer trusts caller-supplied `X-Tenant-Id` for authorization. Tenant context comes from the authenticated client app mapping instead.
+- Canonical clients live in `dbo.clients`.
+- API keys live in `dbo.api_keys` and are stored as hashes only.
+- Multiple keys may exist per client so you can rotate without downtime.
+- Disabled clients, inactive keys, revoked keys, and expired keys are rejected before the business operation runs.

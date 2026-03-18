@@ -17,14 +17,12 @@ IHost host = new HostBuilder()
         string sqlConnectionString = configuration["SqlConnectionString"]
             ?? throw new InvalidOperationException("Missing SqlConnectionString setting.");
         string topicName = configuration["TopicName"] ?? "quad-poc-bus";
-        AuthOptions authOptions = AuthOptions.FromConfiguration(configuration);
 
         services.AddSingleton(new SqlRepositoryOptions(sqlConnectionString));
         services.AddSingleton<SqlRepository>();
         services.AddSingleton(new ServiceBusClient(serviceBusConnectionString));
         services.AddSingleton(new TopicPublisherOptions(topicName));
         services.AddSingleton<TopicPublisher>();
-        services.AddSingleton(authOptions);
         services.AddSingleton<RequestAuthorizer>();
     })
     .Build();

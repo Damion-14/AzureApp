@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.40.2.10011",
-      "templateHash": "8462957397092719655"
+      "templateHash": "3839234746017025657"
     }
   },
   "parameters": {
@@ -59,69 +59,6 @@
       "type": "string",
       "metadata": {
         "description": "Public client IP allowed for SQL access."
-      }
-    },
-    "authEnabled": {
-      "type": "bool",
-      "defaultValue": false,
-      "metadata": {
-        "description": "Enable Microsoft Entra authentication in front of the Function App."
-      }
-    },
-    "authTenantId": {
-      "type": "string",
-      "defaultValue": "",
-      "metadata": {
-        "description": "Microsoft Entra tenant ID used by the Function App authentication provider."
-      }
-    },
-    "authApiClientId": {
-      "type": "string",
-      "defaultValue": "",
-      "metadata": {
-        "description": "Application client ID of the Microsoft Entra app registration that represents the Function API."
-      }
-    },
-    "authApiClientSecret": {
-      "type": "securestring",
-      "defaultValue": "",
-      "metadata": {
-        "description": "Client secret for the Microsoft Entra app registration used by App Service authentication."
-      }
-    },
-    "authAllowedClientApplications": {
-      "type": "array",
-      "defaultValue": [],
-      "metadata": {
-        "description": "Client application IDs that are allowed to call the Function API."
-      }
-    },
-    "authAllowedAudiences": {
-      "type": "array",
-      "defaultValue": [],
-      "metadata": {
-        "description": "Audiences allowed for bearer tokens. If empty and auth is enabled, api://<authApiClientId> is used."
-      }
-    },
-    "authAuthorizedClientsJson": {
-      "type": "string",
-      "defaultValue": "[[]",
-      "metadata": {
-        "description": "JSON array mapping approved client application IDs to application tenant IDs."
-      }
-    },
-    "authReadRole": {
-      "type": "string",
-      "defaultValue": "items.read",
-      "metadata": {
-        "description": "Role claim required to read items and operations."
-      }
-    },
-    "authWriteRole": {
-      "type": "string",
-      "defaultValue": "items.write",
-      "metadata": {
-        "description": "Role claim required to write items."
       }
     }
   },
@@ -447,33 +384,6 @@
           },
           "resultsSubscriptionName": {
             "value": "results"
-          },
-          "authEnabled": {
-            "value": "[parameters('authEnabled')]"
-          },
-          "authTenantId": {
-            "value": "[parameters('authTenantId')]"
-          },
-          "authApiClientId": {
-            "value": "[parameters('authApiClientId')]"
-          },
-          "authApiClientSecret": {
-            "value": "[parameters('authApiClientSecret')]"
-          },
-          "authAllowedClientApplications": {
-            "value": "[parameters('authAllowedClientApplications')]"
-          },
-          "authAllowedAudiences": {
-            "value": "[parameters('authAllowedAudiences')]"
-          },
-          "authAuthorizedClientsJson": {
-            "value": "[parameters('authAuthorizedClientsJson')]"
-          },
-          "authReadRole": {
-            "value": "[parameters('authReadRole')]"
-          },
-          "authWriteRole": {
-            "value": "[parameters('authWriteRole')]"
           }
         },
         "template": {
@@ -483,7 +393,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.40.2.10011",
-              "templateHash": "11965184841791263295"
+              "templateHash": "12680787268905178703"
             }
           },
           "parameters": {
@@ -516,46 +426,7 @@
             },
             "resultsSubscriptionName": {
               "type": "string"
-            },
-            "authEnabled": {
-              "type": "bool",
-              "defaultValue": false
-            },
-            "authTenantId": {
-              "type": "string",
-              "defaultValue": ""
-            },
-            "authApiClientId": {
-              "type": "string",
-              "defaultValue": ""
-            },
-            "authApiClientSecret": {
-              "type": "securestring",
-              "defaultValue": ""
-            },
-            "authAllowedClientApplications": {
-              "type": "array",
-              "defaultValue": []
-            },
-            "authAllowedAudiences": {
-              "type": "array",
-              "defaultValue": []
-            },
-            "authAuthorizedClientsJson": {
-              "type": "string",
-              "defaultValue": "[[]"
-            },
-            "authReadRole": {
-              "type": "string",
-              "defaultValue": "items.read"
-            },
-            "authWriteRole": {
-              "type": "string",
-              "defaultValue": "items.write"
             }
-          },
-          "variables": {
-            "effectiveAllowedAudiences": "[if(not(empty(parameters('authAllowedAudiences'))), parameters('authAllowedAudiences'), if(empty(parameters('authApiClientId')), createArray(), createArray(format('api://{0}', parameters('authApiClientId')))))]"
           },
           "resources": [
             {
@@ -664,30 +535,6 @@
                     {
                       "name": "ResultsSubscription",
                       "value": "[parameters('resultsSubscriptionName')]"
-                    },
-                    {
-                      "name": "Auth__Enabled",
-                      "value": "[string(parameters('authEnabled'))]"
-                    },
-                    {
-                      "name": "Auth__AuthorizedClientsJson",
-                      "value": "[parameters('authAuthorizedClientsJson')]"
-                    },
-                    {
-                      "name": "Auth__ReadRole",
-                      "value": "[parameters('authReadRole')]"
-                    },
-                    {
-                      "name": "Auth__WriteRole",
-                      "value": "[parameters('authWriteRole')]"
-                    },
-                    {
-                      "name": "Auth__DefaultTenantId",
-                      "value": "poc"
-                    },
-                    {
-                      "name": "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET",
-                      "value": "[parameters('authApiClientSecret')]"
                     }
                   ]
                 },
@@ -717,50 +564,6 @@
                 "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
                 "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', split(format('{0}/default/app-package', parameters('storageAccountName')), '/')[0], split(format('{0}/default/app-package', parameters('storageAccountName')), '/')[1], split(format('{0}/default/app-package', parameters('storageAccountName')), '/')[2])]",
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
-              ]
-            },
-            {
-              "condition": "[parameters('authEnabled')]",
-              "type": "Microsoft.Web/sites/config",
-              "apiVersion": "2022-09-01",
-              "name": "[format('{0}/{1}', parameters('functionAppName'), 'authsettingsV2')]",
-              "properties": {
-                "platform": {
-                  "enabled": true,
-                  "runtimeVersion": "~1"
-                },
-                "globalValidation": {
-                  "requireAuthentication": true,
-                  "unauthenticatedClientAction": "Return401",
-                  "redirectToProvider": "azureactivedirectory"
-                },
-                "identityProviders": {
-                  "azureActiveDirectory": {
-                    "enabled": true,
-                    "registration": {
-                      "clientId": "[parameters('authApiClientId')]",
-                      "clientSecretSettingName": "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET",
-                      "openIdIssuer": "[format('https://login.microsoftonline.com/{0}/v2.0', parameters('authTenantId'))]"
-                    },
-                    "validation": {
-                      "allowedAudiences": "[variables('effectiveAllowedAudiences')]",
-                      "defaultAuthorizationPolicy": {
-                        "allowedApplications": "[parameters('authAllowedClientApplications')]"
-                      },
-                      "jwtClaimChecks": {
-                        "allowedClientApplications": "[parameters('authAllowedClientApplications')]"
-                      }
-                    }
-                  }
-                },
-                "login": {
-                  "tokenStore": {
-                    "enabled": false
-                  }
-                }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Web/sites', parameters('functionAppName'))]"
               ]
             }
           ],

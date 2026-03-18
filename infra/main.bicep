@@ -25,34 +25,6 @@ param sqlAdminPassword string
 @description('Public client IP allowed for SQL access.')
 param clientIpAddress string
 
-@description('Enable Microsoft Entra authentication in front of the Function App.')
-param authEnabled bool = false
-
-@description('Microsoft Entra tenant ID used by the Function App authentication provider.')
-param authTenantId string = ''
-
-@description('Application client ID of the Microsoft Entra app registration that represents the Function API.')
-param authApiClientId string = ''
-
-@secure()
-@description('Client secret for the Microsoft Entra app registration used by App Service authentication.')
-param authApiClientSecret string = ''
-
-@description('Client application IDs that are allowed to call the Function API.')
-param authAllowedClientApplications array = []
-
-@description('Audiences allowed for bearer tokens. If empty and auth is enabled, api://<authApiClientId> is used.')
-param authAllowedAudiences array = []
-
-@description('JSON array mapping approved client application IDs to application tenant IDs.')
-param authAuthorizedClientsJson string = '[]'
-
-@description('Role claim required to read items and operations.')
-param authReadRole string = 'items.read'
-
-@description('Role claim required to write items.')
-param authWriteRole string = 'items.write'
-
 var suffix = toLower(uniqueString(subscription().subscriptionId, resourceGroupName, namePrefix))
 var storageAccountName = take(toLower(replace('${namePrefix}${suffix}sa', '-', '')), 24)
 var functionAppName = '${namePrefix}-func-${suffix}'
@@ -104,8 +76,6 @@ module functionApp './modules/functionapp.bicep' = {
   scope: resourceGroup(resourceGroupName)
   dependsOn: [
     rg
-    serviceBus
-    sql
   ]
   params: {
     location: location
@@ -118,15 +88,6 @@ module functionApp './modules/functionapp.bicep' = {
     sqlConnectionString: sql.outputs.sqlConnectionString
     topicName: topicName
     resultsSubscriptionName: 'results'
-    authEnabled: authEnabled
-    authTenantId: authTenantId
-    authApiClientId: authApiClientId
-    authApiClientSecret: authApiClientSecret
-    authAllowedClientApplications: authAllowedClientApplications
-    authAllowedAudiences: authAllowedAudiences
-    authAuthorizedClientsJson: authAuthorizedClientsJson
-    authReadRole: authReadRole
-    authWriteRole: authWriteRole
   }
 }
 

@@ -9,6 +9,14 @@ namespace Quad.Poc.Functions.Data;
 public sealed record SqlRepositoryOptions(string ConnectionString);
 
 internal sealed record ExistingOperation(Guid OperationId, byte[] RequestHash);
+public sealed record AuthorizedApiKeyRecord(
+    Guid ClientId,
+    string TenantId,
+    string Name,
+    bool ClientIsActive,
+    bool KeyIsActive,
+    DateTime? ExpiresAt,
+    DateTime? RevokedAt);
 
 public sealed class SqlRepository
 {
@@ -122,6 +130,34 @@ public sealed class SqlRepository
         return await connection.QuerySingleOrDefaultAsync<OperationRecord>(new CommandDefinition(
             sql,
             new { operationId },
+            cancellationToken: cancellationToken));
+    }
+
+    public async Task<AuthorizedApiKeyRecord?> GetAuthorizedClientByApiKeyHashAsync(
+        byte[] apiKeyHash,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT
+                c.clientId,
+                c.tenantId,
+                c.name,
+                c.isActive AS ClientIsActive,
+                k.isActive AS KeyIsActive,
+                k.expiresAt,
+                k.revokedAt
+            FROM api_keys k
+            INNER JOIN clients c ON c.clientId = k.clientId
+            WHERE k.keyHash = @apiKeyHash;
+            """;
+
+        await using var connection = new SqlConnection(_connectionString);
+        return await connection.QuerySingleOrDefaultAsync<AuthorizedApiKeyRecord>(new CommandDefinition(
+            sql,
+            new
+            {
+                apiKeyHash
+            },
             cancellationToken: cancellationToken));
     }
 
