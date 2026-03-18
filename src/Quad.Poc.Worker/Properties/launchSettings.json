@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Quad.Poc.Worker": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

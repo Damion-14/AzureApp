@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$SubscriptionId,
     [string]$Location = "eastus",
-    [string]$ResourceGroupName = "rg-quad-poc-dev",
+    [string]$ResourceGroupName = "rg-azure-app-test",
     [string]$NamePrefix = "quadpoc",
     [string]$SqlAdminLogin = "quadpocadmin",
     [Parameter(Mandatory = $true)]

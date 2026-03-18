@@ -35,17 +35,21 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
-resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
+resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: appServicePlanName
   location: location
-  sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
-  }
   kind: 'functionapp'
+  sku: {
+    name: 'FC1'
+    tier: 'FlexConsumption'
+  }
   properties: {
     reserved: true
   }
+}
+
+resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  name: '${storage.name}/default/app-package'
 }
 
 resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
@@ -69,7 +73,6 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${listKeys(storage.id, storage.apiVersion).keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
 var effectiveAllowedAudiences = !empty(authAllowedAudiences)
   ? authAllowedAudiences
   : empty(authApiClientId)
@@ -77,28 +80,28 @@ var effectiveAllowedAudiences = !empty(authAllowedAudiences)
     : [
         'api://${authApiClientId}'
       ]
+var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${listKeys(storage.id, storage.apiVersion).keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
 
-resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
+resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: functionAppName
   location: location
   kind: 'functionapp,linux'
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'DOTNET-ISOLATED|8.0'
       ftpsState: 'FtpsOnly'
+      minTlsVersion: '1.2'
       appSettings: [
         {
-          name: 'FUNCTIONS_EXTENSION_VERSION'
-          value: '~4'
-        }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'dotnet-isolated'
-        }
-        {
           name: 'AzureWebJobsStorage'
+          value: storageConnectionString
+        }
+        {
+          name: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
           value: storageConnectionString
         }
         {
@@ -147,7 +150,30 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
       ]
     }
+    functionAppConfig: {
+      runtime: {
+        name: 'dotnet-isolated'
+        version: '8.0'
+      }
+      scaleAndConcurrency: {
+        instanceMemoryMB: 2048
+        maximumInstanceCount: 2
+      }
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${storage.properties.primaryEndpoints.blob}app-package'
+          authentication: {
+            type: 'StorageAccountConnectionString'
+            storageAccountConnectionStringName: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
+          }
+        }
+      }
+    }
   }
+  dependsOn: [
+    deploymentContainer
+  ]
 }
 
 resource functionAppAuth 'Microsoft.Web/sites/config@2022-09-01' = if (authEnabled) {

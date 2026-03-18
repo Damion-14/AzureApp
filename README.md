@@ -16,29 +16,118 @@ End-to-end PoC for idempotent item upsert using:
 - `src/Quad.Poc.Worker/` local worker for commands subscription
 - `scripts/` helper scripts for worker run and manual test
 
-## Deploy infrastructure
+## Minimal Azure test flow
 
-1. Authenticate Azure CLI and choose subscription.
-2. Run:
+This is the shortest path to get the app running for manual testing:
+
+1. Log in to Azure CLI and choose the subscription.
+2. Deploy infrastructure with the PowerShell script.
+3. Publish the Azure Function App.
+4. Apply the SQL schema.
+5. Run the worker locally.
+6. Call the deployed Function App from Postman.
+
+### 1. Azure login
+
+```powershell
+az login
+az account set --subscription "<subscription-guid>"
+```
+
+### 2. Deploy infrastructure
 
 ```powershell
 .\infra\scripts\deploy.ps1 `
   -SubscriptionId "<subscription-guid>" `
+  -ResourceGroupName "rg-azure-app-test" `
+  -NamePrefix "azureapptest" `
+  -Location "eastus" `
   -SqlAdminPassword "<strong-password>"
 ```
 
-Deployment outputs include:
+Capture these values from the deployment output:
 
-- `serviceBusConnectionString`
-- `sqlConnectionString`
 - `functionAppName`
-- `topicName`
+- `serviceBusConnectionString`
+- `sqlServerName`
+- `sqlDatabaseName`
 
-## Apply SQL schema
+### 3. Publish the Function App
 
-Use Azure Data Studio, SSMS, or `sqlcmd` to execute:
+Install Azure Functions Core Tools if needed, then publish from the Functions project folder:
 
-- `db/001_schema.sql`
+```powershell
+cd .\src\Quad.Poc.Functions
+$env:FUNCTIONS_WORKER_RUNTIME = "dotnet-isolated"
+func azure functionapp publish "<functionAppName>" --dotnet-isolated
+cd ..\..
+```
+
+### 4. Apply the SQL schema
+
+```powershell
+sqlcmd -S "<sqlServerName>.database.windows.net" `
+  -d "<sqlDatabaseName>" `
+  -U "quadpocadmin" `
+  -P "<strong-password>" `
+  -C `
+  -i ".\db\001_schema.sql"
+```
+
+### 5. Run the worker locally
+
+The worker reads from the `commands` Service Bus subscription and writes results back to the topic.
+
+```powershell
+.\scripts\run-worker.ps1 -ServiceBusConnectionString "<service-bus-connection-string>"
+```
+
+You can also run `Quad.Poc.Worker` from Visual Studio. The project includes a Development launch profile and reads `appsettings.Development.json`.
+
+### 6. Test from Postman
+
+Use this request:
+
+- Method: `PUT`
+- URL: `https://<functionAppName>.azurewebsites.net/v1/items/item-1001`
+- Headers:
+  - `Content-Type: application/json`
+  - `X-Tenant-Id: poc`
+  - `Idempotency-Key: idem-1001`
+- Body:
+
+```json
+{
+  "itemId": "item-1001",
+  "name": "PoC Item",
+  "quantity": 4,
+  "uom": "EA",
+  "lastUpdatedBy": "manual-test"
+}
+```
+
+Expected response:
+
+```json
+{
+  "OperationId": "<guid>",
+  "StatusUrl": "https://<functionAppName>.azurewebsites.net/v1/operations/<guid>",
+  "ResourceUrl": "https://<functionAppName>.azurewebsites.net/v1/items/item-1001"
+}
+```
+
+Then:
+
+- `GET {{StatusUrl}}`
+- `GET {{ResourceUrl}}` with header `X-Tenant-Id: poc`
+
+### 7. Clean up
+
+Delete the resource group when done:
+
+```powershell
+az group delete --name "rg-azure-app-test" --yes
+```
 
 ## Configure and run Function App locally
 
